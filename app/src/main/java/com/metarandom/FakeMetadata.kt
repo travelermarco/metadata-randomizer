@@ -131,8 +131,8 @@ object FakeMetadata {
         val altitude = Random.nextInt(5, 280)
         exif.setAttribute(ExifInterface.TAG_GPS_ALTITUDE,     "$altitude/1")
         exif.setAttribute(ExifInterface.TAG_GPS_ALTITUDE_REF, "0")
-        val gpsDate = dateTime.substring(0, 10).replace(":", "/")
-        exif.setAttribute(ExifInterface.TAG_GPS_DATESTAMP, gpsDate)
+        // EXIF spec: TAG_GPS_DATESTAMP format is "YYYY:MM:DD" (colons, not slashes)
+        exif.setAttribute(ExifInterface.TAG_GPS_DATESTAMP, dateTime.substring(0, 10))
 
         // Private fields → strip
         exif.setAttribute(ExifInterface.TAG_USER_COMMENT,    null)

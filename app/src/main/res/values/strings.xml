@@ -5,4 +5,5 @@
     <string name="processing_multiple">Processing %1$d of %2$d…</string>
     <string name="share_via">Share anonymized file via</string>
     <string name="instructions">Open your Gallery, select a photo or video,\ntap Share and choose Metadata Randomizer.\n\nYour real GPS, device and date will be\nreplaced with random fake data.</string>
+    <string name="error_processing">Could not process media. Please try again.</string>
 </resources>

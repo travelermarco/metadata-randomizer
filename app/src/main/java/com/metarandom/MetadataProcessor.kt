@@ -15,18 +15,19 @@ object MetadataProcessor {
         val outputDir = File(context.cacheDir, "processed").also { it.mkdirs() }
         val outputFile = File(outputDir, FakeMetadata.randomImageFilename())
 
-        // Read original orientation BEFORE re-encoding strips it
-        val orientation = context.contentResolver.openInputStream(uri)?.use { stream ->
-            ExifInterface(stream).getAttributeInt(
-                ExifInterface.TAG_ORIENTATION,
-                ExifInterface.ORIENTATION_NORMAL
-            )
-        } ?: ExifInterface.ORIENTATION_NORMAL
+        // Read all bytes in a single stream open — pipe-backed URIs are single-use
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalStateException("Cannot open stream from $uri")
 
-        // Decode bitmap — this discards ALL original metadata
-        val raw = context.contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream)
-        } ?: throw IllegalStateException("Cannot decode image from $uri")
+        // Read EXIF orientation from in-memory copy before re-encoding strips it
+        val orientation = ExifInterface(bytes.inputStream()).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+
+        // Decode bitmap — discards ALL original metadata
+        val raw = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            ?: throw IllegalStateException("Cannot decode image from $uri")
 
         // Correct visual rotation so the output displays upright without EXIF aid
         val bitmap = correctOrientation(raw, orientation)
@@ -54,8 +55,8 @@ object MetadataProcessor {
             ExifInterface.ORIENTATION_ROTATE_270   -> matrix.postRotate(270f)
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
             ExifInterface.ORIENTATION_FLIP_VERTICAL   -> matrix.postScale(1f, -1f)
-            ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f);  matrix.postScale(-1f, 1f) }
-            ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(-90f); matrix.postScale(-1f, 1f) }
+            ExifInterface.ORIENTATION_TRANSPOSE    -> { matrix.postRotate(90f);  matrix.postScale(-1f, 1f) }
+            ExifInterface.ORIENTATION_TRANSVERSE   -> { matrix.postRotate(-90f); matrix.postScale(-1f, 1f) }
             else -> return bitmap
         }
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
