@@ -8,5 +8,7 @@
     <string name="instructions">Open your Gallery, select a photo or video,\ntap Share and choose Metadata Randomizer.\n\nYour real GPS, device and date will be\nreplaced with random fake data.</string>
     <string name="hint_telegram">Sharing in a moment…\n\nNote: if you send as a Photo in Telegram or WhatsApp,\nthose apps re-compress and strip all metadata.\nTo verify this app worked, send as File instead.</string>
     <string name="update_available">⬆ Update v%s available</string>
-    <string name="update_download">Download</string>
+    <string name="update_download">Install</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_download_error">Download failed. Tap to open in browser.</string>
 </resources>

@@ -18,6 +18,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
+import java.net.URL
 
 class ShareActivity : AppCompatActivity() {
 
@@ -41,32 +43,29 @@ class ShareActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_share)
 
-        statusText              = findViewById(R.id.statusText)
-        progressBar             = findViewById(R.id.progressBar)
-        confirmationBox         = findViewById(R.id.confirmationBox)
-        confirmationText        = findViewById(R.id.confirmationText)
-        hintText                = findViewById(R.id.hintText)
-        updateBanner            = findViewById(R.id.updateBanner)
-        updateText              = findViewById(R.id.updateText)
-        updateButton            = findViewById(R.id.updateButton)
-        updateBannerLauncher    = findViewById(R.id.updateBannerLauncher)
-        updateTextLauncher      = findViewById(R.id.updateTextLauncher)
-        updateButtonLauncher    = findViewById(R.id.updateButtonLauncher)
+        statusText           = findViewById(R.id.statusText)
+        progressBar          = findViewById(R.id.progressBar)
+        confirmationBox      = findViewById(R.id.confirmationBox)
+        confirmationText     = findViewById(R.id.confirmationText)
+        hintText             = findViewById(R.id.hintText)
+        updateBanner         = findViewById(R.id.updateBanner)
+        updateText           = findViewById(R.id.updateText)
+        updateButton         = findViewById(R.id.updateButton)
+        updateBannerLauncher = findViewById(R.id.updateBannerLauncher)
+        updateTextLauncher   = findViewById(R.id.updateTextLauncher)
+        updateButtonLauncher = findViewById(R.id.updateButtonLauncher)
 
         val uris = extractUris(intent)
 
         if (uris.isEmpty()) {
-            // Launched from home screen — show instructions + run update check
             progressBar.visibility = View.GONE
             statusText.text = getString(R.string.instructions)
-            checkForUpdatesLauncher()
+            checkForUpdates(launcher = true)
             return
         }
 
-        // Start background update check (fire-and-forget — won't block the share flow)
-        lifecycleScope.launch { checkForUpdatesShare() }
+        checkForUpdates(launcher = false)
 
-        // Main share processing
         lifecycleScope.launch {
             val results = processAll(uris)
 
@@ -80,12 +79,10 @@ class ShareActivity : AppCompatActivity() {
                 progressBar.visibility     = View.GONE
                 statusText.visibility      = View.GONE
                 confirmationBox.visibility = View.VISIBLE
-
                 confirmationText.text = if (results.size == 1)
                     results.first().second
                 else
                     results.joinToString("\n") { "• ${it.second}" }
-
                 hintText.text = getString(R.string.hint_telegram)
             }
 
@@ -95,26 +92,65 @@ class ShareActivity : AppCompatActivity() {
         }
     }
 
-    // Update check shown inside the confirmation box (share flow)
-    private fun checkForUpdatesShare() {
+    private fun checkForUpdates(launcher: Boolean) {
         lifecycleScope.launch {
             val info = UpdateChecker.check(VERSION_NAME) ?: return@launch
             withContext(Dispatchers.Main) {
-                updateText.text = getString(R.string.update_available, info.version)
-                updateButton.setOnClickListener { openUrl(info.releaseUrl) }
-                updateBanner.visibility = View.VISIBLE
+                val label = getString(R.string.update_available, info.version)
+                if (launcher) {
+                    updateTextLauncher.text = label
+                    bindUpdateButton(updateButtonLauncher, info)
+                    updateBannerLauncher.visibility = View.VISIBLE
+                } else {
+                    updateText.text = label
+                    bindUpdateButton(updateButton, info)
+                    updateBanner.visibility = View.VISIBLE
+                }
             }
         }
     }
 
-    // Update check shown on the launcher screen
-    private fun checkForUpdatesLauncher() {
-        lifecycleScope.launch {
-            val info = UpdateChecker.check(VERSION_NAME) ?: return@launch
+    private fun bindUpdateButton(button: TextView, info: UpdateInfo) {
+        if (info.apkUrl != null) {
+            // Direct APK available — download and install
+            button.setOnClickListener {
+                button.text = getString(R.string.update_downloading)
+                button.isClickable = false
+                lifecycleScope.launch { downloadAndInstall(button, info) }
+            }
+        } else {
+            // No APK asset — open releases page in browser
+            button.setOnClickListener { openUrl(info.releaseUrl) }
+        }
+    }
+
+    private suspend fun downloadAndInstall(button: TextView, info: UpdateInfo) {
+        val apkUrl = info.apkUrl ?: return
+        try {
+            val updateDir = File(cacheDir, "updates").also { it.mkdirs() }
+            val apkFile   = File(updateDir, "update.apk")
+
+            withContext(Dispatchers.IO) {
+                URL(apkUrl).openStream().use { input ->
+                    FileOutputStream(apkFile).use { output -> input.copyTo(output) }
+                }
+            }
+
+            val apkUri = FileProvider.getUriForFile(this, "com.metarandom.fileprovider", apkFile)
+            val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                data  = apkUri
+                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                putExtra(Intent.EXTRA_RETURN_RESULT, false)
+            }
+            startActivity(install)
+
+        } catch (_: Exception) {
             withContext(Dispatchers.Main) {
-                updateTextLauncher.text = getString(R.string.update_available, info.version)
-                updateButtonLauncher.setOnClickListener { openUrl(info.releaseUrl) }
-                updateBannerLauncher.visibility = View.VISIBLE
+                button.text = getString(R.string.update_download)
+                button.isClickable = true
+                button.setOnClickListener { openUrl(info.releaseUrl) }
+                Toast.makeText(this@ShareActivity, getString(R.string.update_download_error), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -168,12 +204,10 @@ class ShareActivity : AppCompatActivity() {
         val contentUris = withContext(Dispatchers.IO) {
             files.map { FileProvider.getUriForFile(this@ShareActivity, "com.metarandom.fileprovider", it) }
         }
-
         val allVideos = files.all { it.extension == "mp4" }
         val clip = ClipData.newRawUri("", contentUris.first()).also { cd ->
             contentUris.drop(1).forEach { cd.addItem(ClipData.Item(it)) }
         }
-
         val shareIntent = if (contentUris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
                 type = if (allVideos) "video/mp4" else "image/jpeg"
@@ -189,7 +223,6 @@ class ShareActivity : AppCompatActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         }
-
         startActivity(Intent.createChooser(shareIntent, getString(R.string.share_via)))
     }
 }
