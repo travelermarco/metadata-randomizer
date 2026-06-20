@@ -121,6 +121,16 @@
 
     </LinearLayout>
 
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="Developed by Marco and Yoshi 🗺️🙏🏼"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        android:alpha="0.55"
+        android:gravity="center" />
+
     <!-- Update banner for launcher screen (no share intent) -->
     <LinearLayout
         android:id="@+id/updateBannerLauncher"

@@ -36,7 +36,7 @@ class ShareActivity : AppCompatActivity() {
     private lateinit var updateButtonLauncher: TextView
 
     companion object {
-        const val VERSION_NAME = "1.2"
+        const val VERSION_NAME = "1.3"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
