@@ -11,9 +11,15 @@ import java.io.FileOutputStream
 
 object MetadataProcessor {
 
-    fun process(context: Context, uri: Uri): File {
+    /**
+     * Processes [uri] by re-encoding it as a clean JPEG (stripping all original
+     * metadata) and injecting fake EXIF. Returns the output file and a summary
+     * string describing what was applied, for display in the confirmation screen.
+     */
+    fun process(context: Context, uri: Uri): Pair<File, String> {
+        val filename  = FakeMetadata.randomImageFilename()
         val outputDir = File(context.cacheDir, "processed").also { it.mkdirs() }
-        val outputFile = File(outputDir, FakeMetadata.randomImageFilename())
+        val outputFile = File(outputDir, filename)
 
         // Read all bytes in a single stream open — pipe-backed URIs are single-use
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -33,18 +39,18 @@ object MetadataProcessor {
         val bitmap = correctOrientation(raw, orientation)
         if (bitmap !== raw) raw.recycle()
 
-        // Write clean JPEG — all original metadata is gone
+        // Write clean JPEG — all original metadata is gone at this point
         FileOutputStream(outputFile).use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
         }
         bitmap.recycle()
 
-        // Inject fake EXIF
+        // Inject fake EXIF and get human-readable summary
         val exif = ExifInterface(outputFile.absolutePath)
-        FakeMetadata.applyToExif(exif)
+        val summary = FakeMetadata.applyToExif(exif)
         exif.saveAttributes()
 
-        return outputFile
+        return Pair(outputFile, "$filename · $summary")
     }
 
     private fun correctOrientation(bitmap: Bitmap, orientation: Int): Bitmap {

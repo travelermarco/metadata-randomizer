@@ -4,6 +4,7 @@
     <string name="processing_single">Anonymizing metadata…</string>
     <string name="processing_multiple">Processing %1$d of %2$d…</string>
     <string name="share_via">Share anonymized file via</string>
-    <string name="instructions">Open your Gallery, select a photo or video,\ntap Share and choose Metadata Randomizer.\n\nYour real GPS, device and date will be\nreplaced with random fake data.</string>
     <string name="error_processing">Could not process media. Please try again.</string>
+    <string name="instructions">Open your Gallery, select a photo or video,\ntap Share and choose Metadata Randomizer.\n\nYour real GPS, device and date will be\nreplaced with random fake data.</string>
+    <string name="hint_telegram">Sharing in a moment…\n\nNote: if you send as a Photo in Telegram or WhatsApp,\nthose apps re-compress and strip all metadata.\nTo verify this app worked, send as File instead.</string>
 </resources>

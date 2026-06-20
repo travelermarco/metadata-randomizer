@@ -5,12 +5,15 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.View
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -18,30 +21,62 @@ import java.io.File
 class ShareActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var confirmationBox: View
+    private lateinit var confirmationText: TextView
+    private lateinit var hintText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_share)
-        statusText = findViewById(R.id.statusText)
+
+        statusText      = findViewById(R.id.statusText)
+        progressBar     = findViewById(R.id.progressBar)
+        confirmationBox = findViewById(R.id.confirmationBox)
+        confirmationText = findViewById(R.id.confirmationText)
+        hintText        = findViewById(R.id.hintText)
 
         val uris = extractUris(intent)
 
         if (uris.isEmpty()) {
+            // Opened from launcher — show how-to instructions
+            progressBar.visibility = View.GONE
             statusText.text = getString(R.string.instructions)
             return
         }
 
         lifecycleScope.launch {
-            val processed = processAll(uris)
-            if (processed.isNotEmpty()) {
-                reshare(processed)
-            } else {
+            val results = processAll(uris)
+
+            if (results.isEmpty()) {
                 Toast.makeText(
                     this@ShareActivity,
                     getString(R.string.error_processing),
                     Toast.LENGTH_LONG
                 ).show()
+                finish()
+                return@launch
             }
+
+            // Show confirmation screen with the actual fake values that were injected
+            withContext(Dispatchers.Main) {
+                progressBar.visibility  = View.GONE
+                statusText.visibility   = View.GONE
+                confirmationBox.visibility = View.VISIBLE
+
+                val body = if (results.size == 1) {
+                    results.first().second   // e.g. "IMG_83920193.jpg · samsung SM-A546B · Paris · 2022-03-14"
+                } else {
+                    results.joinToString("\n") { "• ${it.second}" }
+                }
+                confirmationText.text = body
+                hintText.text = getString(R.string.hint_telegram)
+            }
+
+            // Auto-share after a short pause so the user can read the values
+            delay(3_000L)
+
+            reshare(results.map { it.first })
             finish()
         }
     }
@@ -49,47 +84,46 @@ class ShareActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     private fun extractUris(intent: Intent): List<Uri> = when (intent.action) {
         Intent.ACTION_SEND -> {
-            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-            } else {
+            else
                 intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-            }
             listOfNotNull(uri)
         }
         Intent.ACTION_SEND_MULTIPLE -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) ?: emptyList()
-            } else {
+            else
                 @Suppress("UNCHECKED_CAST")
                 intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
-            }
         }
         else -> emptyList()
     }
 
-    private suspend fun processAll(uris: List<Uri>): List<File> = withContext(Dispatchers.IO) {
-        val results = mutableListOf<File>()
-        uris.forEachIndexed { index, uri ->
-            withContext(Dispatchers.Main) {
-                statusText.text = if (uris.size == 1)
-                    getString(R.string.processing_single)
-                else
-                    getString(R.string.processing_multiple, index + 1, uris.size)
+    private suspend fun processAll(uris: List<Uri>): List<Pair<File, String>> =
+        withContext(Dispatchers.IO) {
+            val results = mutableListOf<Pair<File, String>>()
+            uris.forEachIndexed { index, uri ->
+                withContext(Dispatchers.Main) {
+                    statusText.text = if (uris.size == 1)
+                        getString(R.string.processing_single)
+                    else
+                        getString(R.string.processing_multiple, index + 1, uris.size)
+                }
+                runCatching {
+                    val mime = contentResolver.getType(uri) ?: "image/jpeg"
+                    val result = if (mime.startsWith("video/"))
+                        VideoProcessor.process(this@ShareActivity, uri)
+                    else
+                        MetadataProcessor.process(this@ShareActivity, uri)
+                    results.add(result)
+                }.onFailure { it.printStackTrace() }
             }
-            runCatching {
-                val mime = contentResolver.getType(uri) ?: "image/jpeg"
-                val file = if (mime.startsWith("video/"))
-                    VideoProcessor.process(this@ShareActivity, uri)
-                else
-                    MetadataProcessor.process(this@ShareActivity, uri)
-                results.add(file)
-            }.onFailure { it.printStackTrace() }
+            results
         }
-        results
-    }
 
     private suspend fun reshare(files: List<File>) {
-        // FileProvider lookup on IO thread — avoid StrictMode violations
+        // FileProvider lookup on IO thread
         val contentUris = withContext(Dispatchers.IO) {
             files.map { FileProvider.getUriForFile(this@ShareActivity, "com.metarandom.fileprovider", it) }
         }

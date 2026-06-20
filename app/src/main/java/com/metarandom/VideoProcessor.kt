@@ -11,9 +11,14 @@ import java.nio.ByteBuffer
 
 object VideoProcessor {
 
-    fun process(context: Context, uri: Uri): File {
+    /**
+     * Remuxes [uri] keeping only audio and video tracks (metadata/subtitle tracks
+     * are discarded). Returns the output file and a confirmation summary string.
+     */
+    fun process(context: Context, uri: Uri): Pair<File, String> {
+        val filename  = FakeMetadata.randomVideoFilename()
         val outputDir = File(context.cacheDir, "processed").also { it.mkdirs() }
-        val outputFile = File(outputDir, FakeMetadata.randomVideoFilename())
+        val outputFile = File(outputDir, filename)
 
         val extractor = MediaExtractor()
         extractor.setDataSource(context, uri, null)
@@ -76,14 +81,10 @@ object VideoProcessor {
             throw e
         } finally {
             // Always release native resources regardless of success or failure
-            if (muxerStarted) {
-                runCatching { muxer.release() }
-            } else {
-                muxer.release()
-            }
+            if (muxerStarted) runCatching { muxer.release() } else muxer.release()
             extractor.release()
         }
 
-        return outputFile
+        return Pair(outputFile, "$filename · metadata tracks removed")
     }
 }

@@ -6,7 +6,7 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 data class DeviceProfile(val make: String, val model: String, val software: String)
-data class FakeLocation(val lat: Double, val lon: Double)
+data class CityCoord(val name: String, val lat: Double, val lon: Double)
 
 object FakeMetadata {
 
@@ -43,51 +43,43 @@ object FakeMetadata {
         DeviceProfile("TCL",      "T610K",           "T610K-TEUR-2PD.P12"),
     )
 
-    // (lat, lon) city centers with ~4km random jitter applied later
-    private val cityCoords = listOf(
-        51.5074 to -0.1278,   // London
-        48.8566 to  2.3522,   // Paris
-        52.5200 to 13.4050,   // Berlin
-        41.9028 to 12.4964,   // Rome
-        40.4168 to -3.7038,   // Madrid
-        52.3676 to  4.9041,   // Amsterdam
-        48.2082 to 16.3738,   // Vienna
-        50.8503 to  4.3517,   // Brussels
-        50.0755 to 14.4378,   // Prague
-        52.2297 to 21.0122,   // Warsaw
-        47.4979 to 19.0402,   // Budapest
-        41.3851 to  2.1734,   // Barcelona
-        38.7169 to -9.1399,   // Lisbon
-        55.6761 to 12.5683,   // Copenhagen
-        59.3293 to 18.0686,   // Stockholm
-        60.1699 to 24.9384,   // Helsinki
-        59.9139 to 10.7522,   // Oslo
-        47.3769 to  8.5417,   // Zurich
-        48.1351 to 11.5820,   // Munich
-        53.5753 to 10.0153,   // Hamburg
-        40.7128 to -74.0060,  // New York
-        35.6762 to 139.6503,  // Tokyo
-        -33.8688 to 151.2093, // Sydney
-        25.2048 to 55.2708,   // Dubai
-        -23.5505 to -46.6333, // São Paulo
-        43.6532 to -79.3832,  // Toronto
-        -37.8136 to 144.9631, // Melbourne
-        1.3521  to 103.8198,  // Singapore
-        37.5665 to 126.9780,  // Seoul
-        19.4326 to -99.1332,  // Mexico City
+    private val cities = listOf(
+        CityCoord("London",      51.5074,  -0.1278),
+        CityCoord("Paris",       48.8566,   2.3522),
+        CityCoord("Berlin",      52.5200,  13.4050),
+        CityCoord("Rome",        41.9028,  12.4964),
+        CityCoord("Madrid",      40.4168,  -3.7038),
+        CityCoord("Amsterdam",   52.3676,   4.9041),
+        CityCoord("Vienna",      48.2082,  16.3738),
+        CityCoord("Brussels",    50.8503,   4.3517),
+        CityCoord("Prague",      50.0755,  14.4378),
+        CityCoord("Warsaw",      52.2297,  21.0122),
+        CityCoord("Budapest",    47.4979,  19.0402),
+        CityCoord("Barcelona",   41.3851,   2.1734),
+        CityCoord("Lisbon",      38.7169,  -9.1399),
+        CityCoord("Copenhagen",  55.6761,  12.5683),
+        CityCoord("Stockholm",   59.3293,  18.0686),
+        CityCoord("Helsinki",    60.1699,  24.9384),
+        CityCoord("Oslo",        59.9139,  10.7522),
+        CityCoord("Zurich",      47.3769,   8.5417),
+        CityCoord("Munich",      48.1351,  11.5820),
+        CityCoord("Hamburg",     53.5753,  10.0153),
+        CityCoord("New York",    40.7128, -74.0060),
+        CityCoord("Tokyo",       35.6762, 139.6503),
+        CityCoord("Sydney",     -33.8688, 151.2093),
+        CityCoord("Dubai",       25.2048,  55.2708),
+        CityCoord("São Paulo",  -23.5505, -46.6333),
+        CityCoord("Toronto",     43.6532, -79.3832),
+        CityCoord("Melbourne",  -37.8136, 144.9631),
+        CityCoord("Singapore",    1.3521, 103.8198),
+        CityCoord("Seoul",       37.5665, 126.9780),
+        CityCoord("Mexico City", 19.4326, -99.1332),
     )
 
-    fun randomDevice(): DeviceProfile = devices.random()
+    fun randomImageFilename(): String = "IMG_%08d.jpg".format(Random.nextInt(10_000_000, 99_999_999))
+    fun randomVideoFilename(): String = "VID_%08d.mp4".format(Random.nextInt(10_000_000, 99_999_999))
 
-    fun randomLocation(): FakeLocation {
-        val (lat, lon) = cityCoords.random()
-        return FakeLocation(
-            lat + Random.nextDouble(-0.04, 0.04),
-            lon + Random.nextDouble(-0.04, 0.04)
-        )
-    }
-
-    fun randomDateTime(): String {
+    private fun randomDateTime(): String {
         val cal = Calendar.getInstance()
         cal.add(Calendar.DAY_OF_YEAR, -Random.nextInt(180, 1100))
         cal.set(Calendar.HOUR_OF_DAY, Random.nextInt(7, 21))
@@ -103,12 +95,15 @@ object FakeMetadata {
         )
     }
 
-    fun randomImageFilename(): String = "IMG_%08d.jpg".format(Random.nextInt(10_000_000, 99_999_999))
-    fun randomVideoFilename(): String = "VID_%08d.mp4".format(Random.nextInt(10_000_000, 99_999_999))
-
-    fun applyToExif(exif: ExifInterface) {
-        val device   = randomDevice()
-        val location = randomLocation()
+    /**
+     * Applies randomized fake EXIF to [exif] and returns a human-readable
+     * summary of what was written (for display in the confirmation screen).
+     */
+    fun applyToExif(exif: ExifInterface): String {
+        val device   = devices.random()
+        val city     = cities.random()
+        val lat      = city.lat + Random.nextDouble(-0.04, 0.04)
+        val lon      = city.lon + Random.nextDouble(-0.04, 0.04)
         val dateTime = randomDateTime()
 
         // Device fingerprint → fake
@@ -122,31 +117,28 @@ object FakeMetadata {
         exif.setAttribute(ExifInterface.TAG_DATETIME_DIGITIZED, dateTime)
 
         // GPS → fake city with small jitter
-        val latAbs = abs(location.lat)
-        val lonAbs = abs(location.lon)
-        exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE,      toDms(latAbs))
-        exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF,  if (location.lat >= 0) "N" else "S")
-        exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE,     toDms(lonAbs))
-        exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, if (location.lon >= 0) "E" else "W")
-        val altitude = Random.nextInt(5, 280)
-        exif.setAttribute(ExifInterface.TAG_GPS_ALTITUDE,     "$altitude/1")
-        exif.setAttribute(ExifInterface.TAG_GPS_ALTITUDE_REF, "0")
+        exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE,      toDms(abs(lat)))
+        exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF,  if (lat >= 0) "N" else "S")
+        exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE,     toDms(abs(lon)))
+        exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, if (lon >= 0) "E" else "W")
+        exif.setAttribute(ExifInterface.TAG_GPS_ALTITUDE,      "${Random.nextInt(5, 280)}/1")
+        exif.setAttribute(ExifInterface.TAG_GPS_ALTITUDE_REF,  "0")
         // EXIF spec: TAG_GPS_DATESTAMP format is "YYYY:MM:DD" (colons, not slashes)
         exif.setAttribute(ExifInterface.TAG_GPS_DATESTAMP, dateTime.substring(0, 10))
 
         // Private fields → strip
-        exif.setAttribute(ExifInterface.TAG_USER_COMMENT,    null)
-        exif.setAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION, null)
-        exif.setAttribute(ExifInterface.TAG_ARTIST,          null)
-        exif.setAttribute(ExifInterface.TAG_COPYRIGHT,       null)
-        exif.setAttribute(ExifInterface.TAG_CAMERA_OWNER_NAME, null)
+        exif.setAttribute(ExifInterface.TAG_USER_COMMENT,       null)
+        exif.setAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION,  null)
+        exif.setAttribute(ExifInterface.TAG_ARTIST,             null)
+        exif.setAttribute(ExifInterface.TAG_COPYRIGHT,          null)
+        exif.setAttribute(ExifInterface.TAG_CAMERA_OWNER_NAME,  null)
         exif.setAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER, null)
+        exif.setAttribute(ExifInterface.TAG_ORIENTATION,        ExifInterface.ORIENTATION_NORMAL.toString())
 
-        // Orientation already corrected at encode time
-        exif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+        return "${device.make} ${device.model} · ${city.name} · ${dateTime.substring(0, 10)}"
     }
 
-    // Decimal degrees → "DD/1,MM/1,SSSS/100" rational DMS string
+    // Decimal degrees → "DD/1,MM/1,SSSS/100" rational DMS string required by ExifInterface
     private fun toDms(decimal: Double): String {
         val deg  = decimal.toInt()
         val minD = (decimal - deg) * 60.0
