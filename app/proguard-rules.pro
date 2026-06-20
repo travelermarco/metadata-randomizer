@@ -1,0 +1,2 @@
+-keep class androidx.exifinterface.** { *; }
+-keepattributes *Annotation*
