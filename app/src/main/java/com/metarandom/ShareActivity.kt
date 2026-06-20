@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -22,63 +23,104 @@ class ShareActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var progressBar: ProgressBar
-    private lateinit var confirmationBox: View
+    private lateinit var confirmationBox: LinearLayout
     private lateinit var confirmationText: TextView
     private lateinit var hintText: TextView
+    private lateinit var updateBanner: LinearLayout
+    private lateinit var updateText: TextView
+    private lateinit var updateButton: TextView
+    private lateinit var updateBannerLauncher: LinearLayout
+    private lateinit var updateTextLauncher: TextView
+    private lateinit var updateButtonLauncher: TextView
+
+    companion object {
+        const val VERSION_NAME = "1.0"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_share)
 
-        statusText      = findViewById(R.id.statusText)
-        progressBar     = findViewById(R.id.progressBar)
-        confirmationBox = findViewById(R.id.confirmationBox)
-        confirmationText = findViewById(R.id.confirmationText)
-        hintText        = findViewById(R.id.hintText)
+        statusText              = findViewById(R.id.statusText)
+        progressBar             = findViewById(R.id.progressBar)
+        confirmationBox         = findViewById(R.id.confirmationBox)
+        confirmationText        = findViewById(R.id.confirmationText)
+        hintText                = findViewById(R.id.hintText)
+        updateBanner            = findViewById(R.id.updateBanner)
+        updateText              = findViewById(R.id.updateText)
+        updateButton            = findViewById(R.id.updateButton)
+        updateBannerLauncher    = findViewById(R.id.updateBannerLauncher)
+        updateTextLauncher      = findViewById(R.id.updateTextLauncher)
+        updateButtonLauncher    = findViewById(R.id.updateButtonLauncher)
 
         val uris = extractUris(intent)
 
         if (uris.isEmpty()) {
-            // Opened from launcher — show how-to instructions
+            // Launched from home screen — show instructions + run update check
             progressBar.visibility = View.GONE
             statusText.text = getString(R.string.instructions)
+            checkForUpdatesLauncher()
             return
         }
 
+        // Start background update check (fire-and-forget — won't block the share flow)
+        lifecycleScope.launch { checkForUpdatesShare() }
+
+        // Main share processing
         lifecycleScope.launch {
             val results = processAll(uris)
 
             if (results.isEmpty()) {
-                Toast.makeText(
-                    this@ShareActivity,
-                    getString(R.string.error_processing),
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this@ShareActivity, getString(R.string.error_processing), Toast.LENGTH_LONG).show()
                 finish()
                 return@launch
             }
 
-            // Show confirmation screen with the actual fake values that were injected
             withContext(Dispatchers.Main) {
-                progressBar.visibility  = View.GONE
-                statusText.visibility   = View.GONE
+                progressBar.visibility     = View.GONE
+                statusText.visibility      = View.GONE
                 confirmationBox.visibility = View.VISIBLE
 
-                val body = if (results.size == 1) {
-                    results.first().second   // e.g. "IMG_83920193.jpg · samsung SM-A546B · Paris · 2022-03-14"
-                } else {
+                confirmationText.text = if (results.size == 1)
+                    results.first().second
+                else
                     results.joinToString("\n") { "• ${it.second}" }
-                }
-                confirmationText.text = body
+
                 hintText.text = getString(R.string.hint_telegram)
             }
 
-            // Auto-share after a short pause so the user can read the values
             delay(3_000L)
-
             reshare(results.map { it.first })
             finish()
         }
+    }
+
+    // Update check shown inside the confirmation box (share flow)
+    private fun checkForUpdatesShare() {
+        lifecycleScope.launch {
+            val info = UpdateChecker.check(VERSION_NAME) ?: return@launch
+            withContext(Dispatchers.Main) {
+                updateText.text = getString(R.string.update_available, info.version)
+                updateButton.setOnClickListener { openUrl(info.releaseUrl) }
+                updateBanner.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    // Update check shown on the launcher screen
+    private fun checkForUpdatesLauncher() {
+        lifecycleScope.launch {
+            val info = UpdateChecker.check(VERSION_NAME) ?: return@launch
+            withContext(Dispatchers.Main) {
+                updateTextLauncher.text = getString(R.string.update_available, info.version)
+                updateButtonLauncher.setOnClickListener { openUrl(info.releaseUrl) }
+                updateBannerLauncher.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun openUrl(url: String) {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
     @Suppress("DEPRECATION")
@@ -123,23 +165,18 @@ class ShareActivity : AppCompatActivity() {
         }
 
     private suspend fun reshare(files: List<File>) {
-        // FileProvider lookup on IO thread
         val contentUris = withContext(Dispatchers.IO) {
             files.map { FileProvider.getUriForFile(this@ShareActivity, "com.metarandom.fileprovider", it) }
         }
 
         val allVideos = files.all { it.extension == "mp4" }
-        val mimeType  = if (allVideos) "video/mp4" else "image/jpeg"
-
-        // ClipData is REQUIRED alongside FLAG_GRANT_READ_URI_PERMISSION when using
-        // Intent.createChooser: the chooser relays grants only via ClipData, not EXTRA_STREAM.
         val clip = ClipData.newRawUri("", contentUris.first()).also { cd ->
             contentUris.drop(1).forEach { cd.addItem(ClipData.Item(it)) }
         }
 
         val shareIntent = if (contentUris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
-                type = mimeType
+                type = if (allVideos) "video/mp4" else "image/jpeg"
                 putExtra(Intent.EXTRA_STREAM, contentUris.first())
                 clipData = clip
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
