@@ -1,5 +1,7 @@
 # Metadata Randomizer
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?logo=open-source-initiative&logoColor=white)](LICENSE)
+
 An Android app that **strips and replaces photo/video metadata with randomized fake data** before sharing — so your real GPS location, device identity, and timestamps never leave your phone.
 
 ## How it works
